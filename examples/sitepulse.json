@@ -1,0 +1,28 @@
+{
+  "targets": [
+    {
+      "expect": [
+        200
+      ],
+      "headers": {},
+      "interval_s": 60,
+      "keyword": null,
+      "method": "GET",
+      "name": "homepage",
+      "timeout_s": 10,
+      "url": "https://example.com"
+    },
+    {
+      "expect": [
+        200
+      ],
+      "headers": {},
+      "interval_s": 30,
+      "keyword": "ok",
+      "method": "GET",
+      "name": "api-health",
+      "timeout_s": 5,
+      "url": "https://example.com/health"
+    }
+  ]
+}
