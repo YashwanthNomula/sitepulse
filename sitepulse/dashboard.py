@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
+from .incidents import Incident, find_incidents, fmt_duration, fmt_time
 from .models import Target
 from .store import History
 
@@ -89,6 +90,37 @@ def fmt_ms(value: Optional[float]) -> str:
     return f"{value:.0f}ms"
 
 
+def render_ongoing_panel(targets: List[Target], history: History, use_color: bool,
+                         width: int) -> List[str]:
+    """Alert panel listing every still-ongoing incident, longest outage first.
+
+    One line per incident: target, duration so far, started-at, checks failed,
+    first error. Returns [] when nothing is ongoing so callers skip the section.
+    """
+    ongoing: List[Incident] = []
+    for target in targets:
+        for inc in find_incidents(target.name, history.results_for(target.name)):
+            if inc.ongoing:
+                ongoing.append(inc)
+    if not ongoing:
+        return []
+    ongoing.sort(key=lambda inc: inc.started)  # longest-running outage first
+    n = len(ongoing)
+    head = f" ⚠ {n} ONGOING INCIDENT{'S' if n != 1 else ''} "
+    lines = [red(head.center(width, "─"), use_color)]
+    for inc in ongoing:
+        err = (inc.error or "—")[:40]
+        checks = f"{inc.failures} check{'s' if inc.failures != 1 else ''} failed"
+        lines.append(
+            f"{red('●', use_color)} {inc.target:<20} "
+            f"down {dim(fmt_duration(inc.duration_s()), use_color)}  ·  "
+            f"started {dim(fmt_time(inc.started), use_color)}  ·  "
+            f"{checks}  ·  {err}"
+        )
+    lines.append("")
+    return lines
+
+
 def render_frame(targets: List[Target], history: History, use_color: bool,
                  term_width: Optional[int] = None) -> str:
     """Render one full dashboard frame as a string."""
@@ -99,6 +131,7 @@ def render_frame(targets: List[Target], history: History, use_color: bool,
 
     title = f" sitepulse  ·  {now} "
     lines.append(_colorize(title.center(width, "─"), "1;36", use_color))
+    lines.extend(render_ongoing_panel(targets, history, use_color, width))
 
     up_count = 0
     down_count = 0
