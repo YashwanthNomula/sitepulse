@@ -195,3 +195,71 @@ def test_cli_uptime_bad_args(tmp_path, monkeypatch, capsys):
     assert "no target named 'ghost'" in capsys.readouterr().err
     assert main(["uptime", "api", "--days", "0"]) == 1
     assert "--days must be positive" in capsys.readouterr().err
+
+
+def test_cli_uptime_alert_below_passes(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert main(["uptime", "api", "--days", "1", "--alert-below", "50.0"]) == 0
+    out = capsys.readouterr().out
+    assert "SLA OK" in out
+    assert "60.0% meets the 50% threshold" in out
+
+
+def test_cli_uptime_alert_below_equals_passes(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    capsys.readouterr()
+    # 60.0% is not *below* 60.0: the gate only fires on a strict breach.
+    assert main(["uptime", "api", "--days", "1", "--alert-below", "60.0"]) == 0
+
+
+def test_cli_uptime_alert_below_breach(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert main(["uptime", "api", "--days", "1", "--alert-below", "99.0"]) == 2
+    out = capsys.readouterr().out
+    assert "SLA BREACH" in out
+    assert "uptime 60.0% is below the 99% threshold" in out
+
+
+def test_cli_uptime_alert_below_json_breach(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert main(["uptime", "api", "--days", "1", "--alert-below", "99.0",
+                 "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["uptime_pct"] == 60.0
+    assert payload["alert_below"] == 99.0
+    assert payload["breach"] is True
+
+
+def test_cli_uptime_alert_below_json_no_breach(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert main(["uptime", "api", "--days", "1", "--alert-below", "50.0",
+                 "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["alert_below"] == 50.0
+    assert payload["breach"] is False
+
+
+def test_cli_uptime_alert_below_no_data_is_not_a_breach(tmp_path, monkeypatch,
+                                                        capsys):
+    _seed(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert main(["uptime", "quiet", "--days", "7", "--alert-below", "99.0"]) == 0
+    assert "no checks recorded for 'quiet' in the last 7 days" in capsys.readouterr().out
+
+
+def test_cli_uptime_alert_below_negative_rejected(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    assert main(["uptime", "api", "--alert-below", "-1"]) == 2
+    assert "--alert-below must be a non-negative number" in capsys.readouterr().err
+
+
+def test_cli_uptime_alert_below_non_numeric_rejected(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        main(["uptime", "api", "--alert-below", "high"])
+    assert exc.value.code == 2  # argparse rejects a non-float threshold
+

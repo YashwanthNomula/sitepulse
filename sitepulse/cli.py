@@ -213,13 +213,26 @@ def cmd_uptime(args: argparse.Namespace) -> int:
     if args.days <= 0:
         print("--days must be positive", file=sys.stderr)
         return 1
+    # Fail-closed threshold validation: NaN and negatives are rejected before
+    # anything else runs (NaN fails the >= 0 comparison, so one check covers both).
+    threshold = args.alert_below
+    if threshold is not None and not threshold >= 0:
+        print(f"--alert-below must be a non-negative number (got {args.alert_below!r})",
+              file=sys.stderr)
+        return 2
     history = History(_resolve_history(args.history, config))
     history.load()
     summary = uptime_summary(args.target, history.results_for(args.target),
                              days=args.days)
+    breached = (threshold is not None
+                and summary.uptime_pct is not None
+                and summary.uptime_pct < threshold)
     if args.json:
-        print(json.dumps(_uptime_json(summary), indent=2))
-        return 0
+        payload = _uptime_json(summary)
+        payload["alert_below"] = threshold
+        payload["breach"] = breached
+        print(json.dumps(payload, indent=2))
+        return 2 if breached else 0
     use_color = sys.stdout.isatty()
     days_g = f"{args.days:g}"
     if summary.checks == 0:
@@ -242,6 +255,13 @@ def cmd_uptime(args: argparse.Namespace) -> int:
     else:
         res_s = "  (no resolved incidents)"
     print(f"  MTTR      {mttr_s}{res_s}")
+    if threshold is not None:
+        if breached:
+            print(red(f"SLA BREACH: uptime {summary.uptime_pct}% is below the "
+                       f"{threshold:g}% threshold", use_color))
+            return 2
+        print(green(f"SLA OK: uptime {summary.uptime_pct}% meets the "
+                    f"{threshold:g}% threshold", use_color))
     return 0
 
 
@@ -568,6 +588,9 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--days", type=float, default=30.0,
                    help="trailing window in days (default: 30)")
     u.add_argument("--json", action="store_true", help="print machine-readable JSON")
+    u.add_argument("--alert-below", type=float, default=None, metavar="PCT",
+                   help="SLA gate: exit 2 when uptime %% falls below this "
+                        "percentage (CI-friendly; must be >= 0)")
     u.set_defaults(func=cmd_uptime)
 
     al = sub.add_parser("alert", help="manage incident alert channels")

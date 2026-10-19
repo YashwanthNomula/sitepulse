@@ -30,7 +30,7 @@ sitepulse report
 sitepulse incidents [--target api]
 
 # SLA summary: uptime %, incident count, MTTR over a trailing window
-sitepulse uptime api --days 30 [--json]
+sitepulse uptime api --days 30 [--json] [--alert-below 99.0]  # exits 2 when SLA breached
 
 # incident alerts: POST JSON to your webhook when an incident starts/resolves
 sitepulse alert add https://hooks.example.com/sitepulse
@@ -109,6 +109,10 @@ In a real terminal the dashboard redraws in place with color (green ● up, red 
 - **SLA summaries** — `sitepulse uptime <target> --days 30` reports uptime %
   (checks in window), incident count, total downtime, and MTTR (resolved
   incidents only) for the trailing window, with `--json` for scripting.
+  `--alert-below 99.0` turns the summary into a CI gate: the command exits 2
+  (and prints `SLA BREACH`) when uptime % falls below the threshold, and the
+  JSON gains `alert_below` / `breach` keys. Negative or non-numeric
+  thresholds are rejected fail-closed with exit 2.
   Incidents that straddle the window edge are clamped to it: only the
   in-window portion counts toward downtime and MTTR; checks outside the
   window are ignored
