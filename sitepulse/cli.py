@@ -23,7 +23,7 @@ from .alerts import (
 )
 from .checker import check_all
 from .dashboard import dim, green, red, run_dashboard, status_dot
-from .incidents import find_incidents, fmt_duration, fmt_time
+from .incidents import find_incidents, fmt_duration, fmt_time, incidents_to_csv
 from .models import CheckResult, Target
 from .store import (
     History,
@@ -186,8 +186,22 @@ def cmd_incidents(args: argparse.Namespace) -> int:
     for t in targets:
         for inc in find_incidents(t.name, history.results_for(t.name)):
             rows.append((t.name, inc))
+    # Fail closed on export: an unwritable path exits non-zero before any
+    # terminal table is printed, so a failed export is never mistaken for
+    # a successful one. The CSV text is rendered first, so a bad path
+    # leaves no partial file behind.
+    if args.output:
+        try:
+            with open(args.output, "w", newline="", encoding="utf-8") as f:
+                f.write(incidents_to_csv(rows))
+        except OSError as exc:
+            print(f"cannot write CSV export to {args.output!r}: {exc}",
+                  file=sys.stderr)
+            return 1
     if not rows:
         print("no incidents recorded — everything stayed up 🎉")
+        if args.output:
+            print(f"wrote 0 incidents to {args.output}")
         return 0
     header = f"{'target':<20} {'started':<19} {'duration':>9} {'checks':>6}  {'status':<8} first error"
     print(dim(header, use_color))
@@ -198,6 +212,9 @@ def cmd_incidents(args: argparse.Namespace) -> int:
         err = (inc.error or "—")[:40]
         print(f"{name:<20} {fmt_time(inc.started):<19} {dur:>9} "
               f"{inc.failures:>6}  {status:<8} {err}")
+    if args.output:
+        plural = "s" if len(rows) != 1 else ""
+        print(f"wrote {len(rows)} incident{plural} to {args.output}")
     return 0
 
 
@@ -581,6 +598,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     n = sub.add_parser("incidents", help="downtime incidents from recorded history")
     n.add_argument("--target", default=None, help="only show incidents for this target")
+    n.add_argument("--output", default=None, metavar="PATH",
+                   help="also write incidents as CSV to this file "
+                        "(terminal table is still printed; exits non-zero "
+                        "if the file cannot be written)")
     n.set_defaults(func=cmd_incidents)
 
     u = sub.add_parser("uptime", help="SLA summary: uptime %, incidents, MTTR over a trailing window")

@@ -7,8 +7,10 @@ successful check afterwards, or is still ongoing if the latest check failed.
 """
 from __future__ import annotations
 
+import csv
+import io
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
 from .models import CheckResult
 
@@ -78,3 +80,30 @@ def fmt_duration(seconds: float) -> str:
 def fmt_time(epoch: float) -> str:
     import time
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(epoch))
+
+
+#: Columns of the CSV export (see :func:`incidents_to_csv`).
+CSV_COLUMNS = ("target", "start", "end", "duration_s", "checks", "first_error")
+
+
+def incidents_to_csv(rows: Sequence[Tuple[str, Incident]]) -> str:
+    """Render ``(target, incident)`` rows as CSV text.
+
+    ``end`` holds the resolution timestamp, or ``ONGOING`` for an incident
+    that has not resolved yet; ``duration_s`` is seconds from start to end
+    (or to now for ongoing incidents); ``first_error`` is empty when the
+    first failure carried no error message.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(CSV_COLUMNS)
+    for name, inc in rows:
+        writer.writerow([
+            name,
+            fmt_time(inc.started),
+            "ONGOING" if inc.ongoing else fmt_time(inc.ended),  # type: ignore[arg-type]
+            f"{inc.duration_s():g}",
+            inc.failures,
+            inc.error or "",
+        ])
+    return buf.getvalue()

@@ -27,7 +27,7 @@ sitepulse watch
 sitepulse report
 
 # downtime incidents: when each outage started, how long it lasted
-sitepulse incidents [--target api]
+sitepulse incidents [--target api] [--output incidents.csv]  # CSV export; terminal table still prints
 
 # SLA summary: uptime %, incident count, MTTR over a trailing window
 sitepulse uptime api --days 30 [--json] [--alert-below 99.0]  # exits 2 when SLA breached
